@@ -477,16 +477,16 @@ then
   source /run/current-system/profile/etc/profile.d/bash_completion.sh
 fi\n")))
     (etc-service
-     `(("services" ,(file-append net-base "/etc/services"))
+     `(;("services" ,(file-append net-base "/etc/services"))
        ("protocols" ,(file-append net-base "/etc/protocols"))
        ("rpc" ,(file-append net-base "/etc/rpc"))
        ("login.defs" ,#~#$login.defs)
        ("issue" ,#~#$issue)
-       ("nsswitch.conf" ,#~#$nsswitch)
+       ;("nsswitch.conf" ,#~#$nsswitch)
        ("profile" ,#~#$profile)
        ("bashrc" ,#~#$bashrc)
-       ("hosts" ,#~#$(or (operating-system-hosts-file os)
-                         (default-/etc/hosts (operating-system-host-name os))))
+       ;("hosts" ,#~#$(or (operating-system-hosts-file os)
+       ;                  (default-/etc/hosts (operating-system-host-name os))))
        ("localtime" ,(file-append tzdata "/share/zoneinfo/"
                                   (operating-system-timezone os)))
        ("sudoers" ,(operating-system-sudoers-file os))))))
