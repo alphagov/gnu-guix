@@ -125,7 +125,7 @@ host	all	all	::1/128 	trust"))
        (list (shepherd-service
               (provision '(postgres))
               (documentation "Run the PostgreSQL daemon.")
-              (requirement '(user-processes loopback syslogd))
+              (requirement '(user-processes syslogd))
               (start #~(make-forkexec-constructor #$start-script))
               (stop #~(make-kill-destructor))))))))
 
