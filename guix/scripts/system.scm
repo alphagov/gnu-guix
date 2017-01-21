@@ -560,13 +560,15 @@ PATTERN, a string.  When PATTERN is #f, display all the system generations."
 ;;;
 
 (define* (system-derivation-for-action os action
-                                       #:key image-size full-boot? mappings)
+                                       #:key image-size full-boot? mappings
+                                       container-shared-network?)
   "Return as a monadic value the derivation for OS according to ACTION."
   (case action
     ((build init reconfigure)
      (operating-system-derivation os))
     ((container)
-     (container-script os #:mappings mappings))
+     (container-script os #:mappings mappings
+                       #:container-shared-network? container-shared-network?))
     ((vm-image)
      (system-qemu-image os #:disk-image-size image-size))
     ((vm)
@@ -611,6 +613,7 @@ and TARGET arguments."
                          dry-run? derivations-only?
                          use-substitutes? device target
                          image-size full-boot?
+                         container-shared-network?
                          (mappings '())
                          (gc-root #f))
   "Perform ACTION for OS.  INSTALL-BOOTLOADER? specifies whether to install
@@ -634,6 +637,7 @@ output when building a system derivation, such as a disk image."
       ((sys       (system-derivation-for-action os action
                                                 #:image-size image-size
                                                 #:full-boot? full-boot?
+                                                #:container-shared-network? container-shared-network?
                                                 #:mappings mappings))
        (bootloader -> (bootloader-configuration-bootloader
                        (operating-system-bootloader os)))
@@ -779,6 +783,9 @@ Some ACTIONS support additional ARGS.\n"))
   (display (G_ "
       --no-bootloader    for 'init', do not install a bootloader"))
   (display (G_ "
+  -N, --network          for 'container', allow containers to access the network"))
+
+  (display (G_ "
       --share=SPEC       for 'vm', share host file system according to SPEC"))
   (display (G_ "
   -r, --root=FILE        for 'vm', 'vm-image', 'disk-image', 'container',
@@ -816,6 +823,9 @@ Some ACTIONS support additional ARGS.\n"))
                  (lambda (opt name arg result)
                    (alist-cons 'image-size (size->number arg)
                                result)))
+         (option '(#\N "network") #f #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'container-shared-network? #t result)))
          (option '("no-bootloader" "no-grub") #f #f
                  (lambda (opt name arg result)
                    (alist-cons 'install-bootloader? #f result)))
@@ -908,6 +918,9 @@ resulting from command-line parsing."
                              #:use-substitutes? (assoc-ref opts 'substitutes?)
                              #:image-size (assoc-ref opts 'image-size)
                              #:full-boot? (assoc-ref opts 'full-boot?)
+                             #:container-shared-network? (assoc-ref
+                                                          opts
+                                                          'container-shared-network?)
                              #:mappings (filter-map (match-lambda
                                                       (('file-system-mapping . m)
                                                        m)
