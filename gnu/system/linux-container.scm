@@ -60,18 +60,50 @@ containerized OS."
                           %container-file-systems
                           user-file-systems))))
 
-(define* (container-script os #:key (mappings '()))
+
+(define %network-configuration-files
+  '("/etc/resolv.conf"
+    "/etc/nsswitch.conf"
+    "/etc/services"
+    "/etc/hosts"))
+
+(define* (container-script os #:key (mappings '())
+                           container-shared-network?)
   "Return a derivation of a script that runs OS as a Linux container.
 MAPPINGS is a list of <file-system> objects that specify the files/directories
 that will be shared with the host system."
-  (let* ((os           (containerized-operating-system os mappings))
+  (let* ((os           (containerized-operating-system
+                        os
+                        (append
+                         mappings
+                         (if
+                          container-shared-network?
+                          (filter-map (lambda (file)
+                                        (and (file-exists? file)
+                                             (file-system-mapping
+                                              (source file)
+                                              (target file)
+                                              ;; XXX: On some GNU/Linux
+                                              ;; systems, /etc/resolv.conf is a
+                                              ;; symlink to a file in a tmpfs
+                                              ;; which, for an unknown reason,
+                                              ;; cannot be bind mounted
+                                              ;; read-only within the
+                                              ;; container.
+                                              (writable?
+                                               (string=?
+                                                file "/etc/resolv.conf")))))
+                                      %network-configuration-files)
+                          '()))))
          (file-systems (filter file-system-needed-for-boot?
                                (operating-system-file-systems os)))
          (specs        (map file-system->spec file-systems)))
 
-    (mlet* %store-monad ((os-drv (operating-system-derivation
-                                  os
-                                  #:container? #t)))
+    (mlet* %store-monad ((os-drv
+                          (operating-system-derivation
+                           os
+                           #:container? #t
+                           #:container-shared-network? container-shared-network?)))
 
       (define script
         (with-imported-modules (source-module-closure
@@ -93,6 +125,9 @@ that will be shared with the host system."
                 ;; users and groups, which is sufficient for most cases.
                 ;;
                 ;; See: http://www.freedesktop.org/software/systemd/man/systemd-nspawn.html#--private-users=
-                #:host-uids 65536))))
+                #:host-uids 65536
+                #:namespaces (if #$container-shared-network?
+                                 (delq 'net %namespaces)
+                                 %namespaces)))))
 
       (gexp->script "run-container" script))))

@@ -554,13 +554,15 @@ PATTERN, a string.  When PATTERN is #f, display all the system generations."
 ;;;
 
 (define* (system-derivation-for-action os action
-                                       #:key image-size full-boot? mappings)
+                                       #:key image-size full-boot? mappings
+                                       container-shared-network?)
   "Return as a monadic value the derivation for OS according to ACTION."
   (case action
     ((build init reconfigure)
      (operating-system-derivation os))
     ((container)
-     (container-script os #:mappings mappings))
+     (container-script os #:mappings mappings
+                       #:container-shared-network? container-shared-network?))
     ((vm-image)
      (system-qemu-image os #:disk-image-size image-size))
     ((vm)
@@ -593,6 +595,7 @@ PATTERN, a string.  When PATTERN is #f, display all the system generations."
                          #:key grub? dry-run? derivations-only?
                          use-substitutes? device target
                          image-size full-boot?
+                         container-shared-network?
                          (mappings '()))
   "Perform ACTION for OS.  GRUB? specifies whether to install GRUB; DEVICE is
 the target devices for GRUB; TARGET is the target root directory; IMAGE-SIZE
@@ -612,6 +615,7 @@ building anything."
       ((sys       (system-derivation-for-action os action
                                                 #:image-size image-size
                                                 #:full-boot? full-boot?
+                                                #:container-shared-network? container-shared-network?
                                                 #:mappings mappings))
        (grub      (package->derivation (grub-configuration-grub
                                         (operating-system-bootloader os))))
@@ -739,6 +743,8 @@ Some ACTIONS support additional ARGS.\n"))
   (display (_ "
       --no-grub          for 'init', do not install GRUB"))
   (display (_ "
+  -N, --network          for 'container', allow containers to access the network"))
+  (display (_ "
       --share=SPEC       for 'vm', share host file system according to SPEC"))
   (display (_ "
       --expose=SPEC      for 'vm', expose host file system according to SPEC"))
@@ -772,6 +778,9 @@ Some ACTIONS support additional ARGS.\n"))
                  (lambda (opt name arg result)
                    (alist-cons 'image-size (size->number arg)
                                result)))
+         (option '(#\N "network") #f #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'container-shared-network? #t result)))
          (option '("no-grub") #f #f
                  (lambda (opt name arg result)
                    (alist-cons 'install-grub? #f result)))
@@ -857,6 +866,9 @@ resulting from command-line parsing."
                              #:use-substitutes? (assoc-ref opts 'substitutes?)
                              #:image-size (assoc-ref opts 'image-size)
                              #:full-boot? (assoc-ref opts 'full-boot?)
+                             #:container-shared-network? (assoc-ref
+                                                          opts
+                                                          'container-shared-network?)
                              #:mappings (filter-map (match-lambda
                                                       (('file-system-mapping . m)
                                                        m)
