@@ -32,6 +32,7 @@
   #:use-module (ice-9 match)
   #:export (nginx-configuration
             nginx-configuration?
+            nginx-configuration-server-blocks
             nginx-server-configuration
             nginx-server-configuration?
             nginx-upstream-configuration
