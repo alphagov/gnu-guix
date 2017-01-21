@@ -280,13 +280,16 @@ value of the SYSTEM-SERVICE-TYPE service."
                     ("initrd" ,initrd)
                     ("locale" ,locale)))))))      ;used by libc
 
-(define* (essential-services os #:key container?)
+(define* (essential-services os #:key container? container-shared-network?)
   "Return the list of essential services for OS.  These are special services
 that implement part of what's declared in OS are responsible for low-level
 bookkeeping.  CONTAINER? determines whether to return the list of services for
 a container or that of a \"bare metal\" system."
   (define known-fs
     (map file-system-mount-point (operating-system-file-systems os)))
+
+  (if (and container-shared-network? (not container?))
+      (error "cannot specify container-shared-network? without container? #t"))
 
   (let* ((mappings  (device-mapping-services os))
          (root-fs   (root-file-system-service))
@@ -312,7 +315,8 @@ a container or that of a \"bare metal\" system."
            (account-service (append (operating-system-accounts os)
                                     (operating-system-groups os))
                             (operating-system-skeletons os))
-           (operating-system-etc-service os)
+           (operating-system-etc-service
+            os #:container-shared-network? container-shared-network?)
            (service fstab-service-type '())
            (session-environment-service
             (operating-system-environment-variables os))
@@ -332,11 +336,14 @@ a container or that of a \"bare metal\" system."
                              (service firmware-service-type
                                       (operating-system-firmware os))))))))
 
-(define* (operating-system-services os #:key container?)
+(define* (operating-system-services os #:key container? container-shared-network?)
   "Return all the services of OS, including \"internal\" services that do not
 explicitly appear in OS."
   (append (operating-system-user-services os)
-          (essential-services os #:container? container?)))
+          (essential-services
+           os
+           #:container? container?
+           #:container-shared-network? container-shared-network?)))
 
 
 ;;;
@@ -398,7 +405,7 @@ This is the GNU system.  Welcome.\n")
   "Return the default /etc/hosts file."
   (plain-file "hosts" (local-host-aliases host-name)))
 
-(define* (operating-system-etc-service os)
+(define* (operating-system-etc-service os #:key container-shared-network?)
   "Return a <service> that builds containing the static part of the /etc
 directory."
   (let ((login.defs (plain-file "login.defs" "# Empty for now.\n"))
@@ -477,19 +484,22 @@ then
   source /run/current-system/profile/etc/profile.d/bash_completion.sh
 fi\n")))
     (etc-service
-     `(("services" ,(file-append net-base "/etc/services"))
-       ("protocols" ,(file-append net-base "/etc/protocols"))
+     `(("protocols" ,(file-append net-base "/etc/protocols"))
        ("rpc" ,(file-append net-base "/etc/rpc"))
        ("login.defs" ,#~#$login.defs)
        ("issue" ,#~#$issue)
-       ("nsswitch.conf" ,#~#$nsswitch)
        ("profile" ,#~#$profile)
        ("bashrc" ,#~#$bashrc)
-       ("hosts" ,#~#$(or (operating-system-hosts-file os)
-                         (default-/etc/hosts (operating-system-host-name os))))
        ("localtime" ,(file-append tzdata "/share/zoneinfo/"
                                   (operating-system-timezone os)))
-       ("sudoers" ,(operating-system-sudoers-file os))))))
+       ("sudoers" ,(operating-system-sudoers-file os))
+       ,@(if container-shared-network?
+             '()
+             `(("services" ,(file-append net-base "/etc/services"))
+               ("nsswitch.conf" ,#~#$nsswitch)
+               ("hosts" ,#~#$(or (operating-system-hosts-file os)
+                                 (default-/etc/hosts
+                                   (operating-system-host-name os))))))))))
 
 (define %root-account
   ;; Default root account.
@@ -595,20 +605,28 @@ use 'plain-file' instead~%")
 root ALL=(ALL) ALL
 %wheel ALL=(ALL) ALL\n"))
 
-(define* (operating-system-activation-script os #:key container?)
+(define* (operating-system-activation-script os #:key container?
+                                             container-shared-network?)
   "Return the activation script for OS---i.e., the code that \"activates\" the
 stateful part of OS, including user accounts and groups, special directories,
 etc."
-  (let* ((services   (operating-system-services os #:container? container?))
+  (let* ((services   (operating-system-services
+                      os
+                      #:container? container?
+                      #:container-shared-network? container-shared-network?))
          (activation (fold-services services
                                     #:target-type activation-service-type)))
     (activation-service->script activation)))
 
-(define* (operating-system-boot-script os #:key container?)
+(define* (operating-system-boot-script os #:key container?
+                                       container-shared-network?)
   "Return the boot script for OS---i.e., the code started by the initrd once
 we're running in the final root.  When CONTAINER? is true, skip all
 hardware-related operations as necessary when booting a Linux container."
-  (let* ((services (operating-system-services os #:container? container?))
+  (let* ((services (operating-system-services
+                    os
+                    #:container? container?
+                    #:container-shared-network? container-shared-network?))
          (boot     (fold-services services #:target-type boot-service-type)))
     ;; BOOT is the script as a monadic value.
     (service-parameters boot)))
@@ -629,17 +647,24 @@ hardware-related operations as necessary when booting a Linux container."
                               #:target-type
                               shepherd-root-service-type))))
 
-(define* (operating-system-derivation os #:key container?)
+(define* (operating-system-derivation os #:key container?
+                                      container-shared-network?)
   "Return a derivation that builds OS."
-  (let* ((services (operating-system-services os #:container? container?))
+  (let* ((services (operating-system-services
+                    os
+                    #:container? container?
+                    #:container-shared-network? container-shared-network?))
          (system   (fold-services services)))
     ;; SYSTEM contains the derivation as a monadic value.
     (service-parameters system)))
 
-(define* (operating-system-profile os #:key container?)
+(define* (operating-system-profile os #:key container? container-shared-network?)
   "Return a derivation that builds the system profile of OS."
   (mlet* %store-monad
-      ((services -> (operating-system-services os #:container? container?))
+      ((services -> (operating-system-services
+                     os
+                     #:container? container?
+                     #:container-shared-network? container-shared-network?))
        (profile (fold-services services
                                #:target-type profile-service-type)))
     (match profile
