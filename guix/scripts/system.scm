@@ -561,13 +561,15 @@ PATTERN, a string.  When PATTERN is #f, display all the system generations."
 
 (define* (system-derivation-for-action os action
                                        #:key image-size file-system-type
-                                       full-boot? mappings)
+                                       full-boot? mappings
+                                       container-shared-network?)
   "Return as a monadic value the derivation for OS according to ACTION."
   (case action
     ((build init reconfigure)
      (operating-system-derivation os))
     ((container)
-     (container-script os #:mappings mappings))
+     (container-script os #:mappings mappings
+                       #:container-shared-network? container-shared-network?))
     ((vm-image)
      (system-qemu-image os #:disk-image-size image-size))
     ((vm)
@@ -617,6 +619,7 @@ and TARGET arguments."
                          dry-run? derivations-only?
                          use-substitutes? device target
                          image-size file-system-type full-boot?
+                         container-shared-network?
                          (mappings '())
                          (gc-root #f))
   "Perform ACTION for OS.  INSTALL-BOOTLOADER? specifies whether to install
@@ -626,6 +629,8 @@ root directory; IMAGE-SIZE is the size of the image to be built, for the
 The root filesystem is created as a FILE-SYSTEM-TYPE filesystem.
 FULL-BOOT? is used for the 'vm' action;
 it determines whether to boot directly to the kernel or to the bootloader.
+CONTAINER-SHARED_NETWORK? determines if the container will use a use a
+separate network namespace.
 
 When DERIVATIONS-ONLY? is true, print the derivation file name(s) without
 building anything.
@@ -643,6 +648,7 @@ output when building a system derivation, such as a disk image."
                                                 #:file-system-type file-system-type
                                                 #:image-size image-size
                                                 #:full-boot? full-boot?
+                                                #:container-shared-network? container-shared-network?
                                                 #:mappings mappings))
        (bootloader -> (bootloader-configuration-bootloader
                        (operating-system-bootloader os)))
@@ -795,6 +801,8 @@ Some ACTIONS support additional ARGS.\n"))
   (display (G_ "
       --share=SPEC       for 'vm', share host file system according to SPEC"))
   (display (G_ "
+  -N, --network          for 'container', allow containers to access the network"))
+  (display (G_ "
   -r, --root=FILE        for 'vm', 'vm-image', 'disk-image', 'container',
                          and 'build', make FILE a symlink to the result, and
                          register it as a garbage collector root"))
@@ -834,6 +842,9 @@ Some ACTIONS support additional ARGS.\n"))
                  (lambda (opt name arg result)
                    (alist-cons 'image-size (size->number arg)
                                result)))
+         (option '(#\N "network") #f #f
+                 (lambda (opt name arg result)
+                   (alist-cons 'container-shared-network? #t result)))
          (option '("no-bootloader" "no-grub") #f #f
                  (lambda (opt name arg result)
                    (alist-cons 'install-bootloader? #f result)))
@@ -928,6 +939,9 @@ resulting from command-line parsing."
                              #:file-system-type (assoc-ref opts 'file-system-type)
                              #:image-size (assoc-ref opts 'image-size)
                              #:full-boot? (assoc-ref opts 'full-boot?)
+                             #:container-shared-network? (assoc-ref
+                                                          opts
+                                                          'container-shared-network?)
                              #:mappings (filter-map (match-lambda
                                                       (('file-system-mapping . m)
                                                        m)
