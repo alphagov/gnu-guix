@@ -345,6 +345,7 @@ ACTIVATION-SCRIPT-TYPE."
 
                       ;; Same for 'wtmp', which is populated by mingetty et
                       ;; al.
+                      (if (not (file-exists? "/var/log")) (mkdir "/var/log"))
                       (close-port (open-file "/var/log/wtmp" "a0"))
 
                       ;; Set up /run/current-system.  Among other things this
