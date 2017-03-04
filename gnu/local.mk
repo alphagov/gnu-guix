@@ -260,6 +260,7 @@ GNU_SYSTEM_MODULES =				\
   %D%/packages/mc.scm				\
   %D%/packages/mcrypt.scm			\
   %D%/packages/mes.scm				\
+  %D%/packages/memcached.scm			\
   %D%/packages/messaging.scm			\
   %D%/packages/mingw.scm			\
   %D%/packages/mg.scm				\
@@ -430,6 +431,7 @@ GNU_SYSTEM_MODULES =				\
   %D%/services/lirc.scm				\
   %D%/services/mail.scm				\
   %D%/services/mcron.scm			\
+  %D%/services/memcached.scm			\
   %D%/services/messaging.scm			\
   %D%/services/networking.scm			\
   %D%/services/nfs.scm			\
