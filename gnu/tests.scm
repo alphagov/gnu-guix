@@ -256,10 +256,11 @@ the system under test."
 
 (set-record-type-printer! <system-test> write-system-test)
 
-(define (test-modules)
-  "Return the list of modules that define system tests."
-  (scheme-modules (dirname (search-path %load-path "guix.scm"))
-                  "gnu/tests"))
+(define test-modules
+  ;; Return the list of modules that define system tests.
+  (make-parameter
+   (scheme-modules (dirname (search-path %load-path "guix.scm"))
+                   "gnu/tests")))
 
 (define (fold-system-tests proc seed)
   "Invoke PROC on each system test, passing it the test and the previous
