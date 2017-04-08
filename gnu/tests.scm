@@ -51,6 +51,7 @@
             system-test-description
             system-test-location
 
+            test-modules
             fold-system-tests
             all-system-tests))
 
