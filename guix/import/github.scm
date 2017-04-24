@@ -138,14 +138,26 @@ repository separated by a forward slash, from a string URL of the form
 'https://github.com/arq5x/bedtools2/archive/v2.24.0.tar.gz' and the name of
 the package e.g. 'bedtools2'.  Return #f if there is no releases"
   (let* ((token (%github-token))
-         (api-url (string-append
+         (releases-api-url (string-append
                    "https://api.github.com/repos/"
                    (github-user-slash-repository url)
                    "/releases"))
-         (json (json-fetch*
-                (if token
-                    (string-append api-url "?access_token=" token)
-                    api-url))))
+         (tags-api-url (string-append
+                   "https://api.github.com/repos/"
+                   (github-user-slash-repository url)
+                   "/tags"))
+         (json (let
+                   ((releases
+                     (json-fetch*
+                      (if token
+                          (string-append releases-api-url "?access_token=" token)
+                          releases-api-url))))
+                 (if (null? releases)
+                     (json-fetch*
+                      (if token
+                          (string-append tags-api-url "?access_token=" token)
+                          tags-api-url))
+                     releases))))
     (if (eq? json #f)
         (if token
             (error "Error downloading release information through the GitHub
@@ -161,13 +173,17 @@ https://github.com/settings/tokens"))
                   ;; https://github.com/wwood/OrfM/releases/tag/v0.5.1
                   ;; or an all-prerelease set
                   ;; https://github.com/powertab/powertabeditor/releases
-                  (not (hash-ref x "prerelease")))
+                  (and (not (hash-ref x "prerelease"))
+                       (string-prefix? "release_"
+                                       (or (hash-ref x "tag_name")
+                                           (hash-ref x "name")))))
                 json)))
           (match proper-releases
             (()                       ;empty release list
              #f)
             ((release . rest)         ;one or more releases
-             (let ((tag (hash-ref release "tag_name"))
+             (let ((tag (or (hash-ref release "tag_name")
+                            (hash-ref release "name")))
                    (name-length (string-length package-name)))
                ;; some tags include the name of the package e.g. "fdupes-1.51"
                ;; so remove these
