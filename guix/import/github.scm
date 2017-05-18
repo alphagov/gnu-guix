@@ -146,18 +146,10 @@ the package e.g. 'bedtools2'.  Return #f if there is no releases"
                    "https://api.github.com/repos/"
                    (github-user-slash-repository url)
                    "/tags"))
-         (json (let
-                   ((releases
-                     (json-fetch*
-                      (if token
-                          (string-append releases-api-url "?access_token=" token)
-                          releases-api-url))))
-                 (if (null? releases)
-                     (json-fetch*
-                      (if token
-                          (string-append tags-api-url "?access_token=" token)
-                          tags-api-url))
-                     releases))))
+         (json (json-fetch*
+                (if token
+                    (string-append tags-api-url "?access_token=" token)
+                    tags-api-url))))
     (if (eq? json #f)
         (if token
             (error "Error downloading release information through the GitHub
