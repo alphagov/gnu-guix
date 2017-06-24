@@ -20,14 +20,19 @@
 (define-module (gnu services admin)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages logging)
   #:use-module (gnu services)
   #:use-module (gnu services mcron)
   #:use-module (gnu services shepherd)
+  #:use-module (gnu services web)
+  #:use-module (gnu system shadow)
   #:use-module (guix gexp)
+  #:use-module (guix store)
   #:use-module (guix packages)
   #:use-module (guix records)
   #:use-module (srfi srfi-1)
   #:use-module (ice-9 vlist)
+  #:use-module (ice-9 match)
   #:export (%default-rotations
             %rotated-files
 
@@ -41,7 +46,27 @@
             rottlog-configuration
             rottlog-configuration?
             rottlog-service
-            rottlog-service-type))
+            rottlog-service-type
+
+            <tailon-configuration-file>
+            tailon-configuration-file
+            tailon-configuration-file?
+            tailon-configuration-file-paths
+            tailon-configuration-file-bind
+            tailon-configuration-file-relative-root-path
+            tailon-configuration-file-allow-transfers?
+            tailon-configuration-file-follow-names?
+            tailon-configuration-file-tail-lines
+            tailon-configuration-file-allowed-commands
+            tailon-configuration-file-debug?
+
+            <tailon-configuration>
+            tailon-configuration
+            tailon-configuration?
+            tailon-configuration-config-file
+            tailon-configuration-package
+
+            tailon-service-type))
 
 ;;; Commentary:
 ;;;
@@ -171,5 +196,130 @@ for ROTATION."
               (rotations (append (rottlog-rotations config)
                                  rotations)))))
    (default-value (rottlog-configuration))))
+
+(define-record-type* <tailon-configuration-file>
+  tailon-configuration-file make-tailon-configuration-file
+  tailon-configuration-file?
+  (paths         tailon-configuration-paths
+                      (default '("/var/log")))
+  (bind               tailon-configuration-file-bind
+                      (default "localhost:8080"))
+  (relative-root-path tailon-configuration-file-relative-root-path
+                      (default #f))
+  (allow-transfers?   tailon-configuration-file-allow-transfers?
+                      (default #t))
+  (follow-names?      tailon-configuration-file-follow-names?
+                      (default #t))
+  (tail-lines         tailon-configuration-file-tail-lines
+                      (default 200))
+  (allowed-commands   tailon-configuration-file-allowed-commands
+                      (default '("tail" "grep" "awk")))
+  (debug?             tailon-configuration-file-debug?
+                      (default #f)))
+
+(define (tailon-configuration-files-string paths)
+  (string-append
+   "\n"
+   (string-join
+    (map
+     (lambda (x)
+       (string-append
+        "  - "
+        (cond
+         ((string? x)
+          (simple-format #f "'~A'" x))
+         ((list? x)
+          (string-join
+           (cons (simple-format #f "'~A':" (car x))
+                 (map
+                  (lambda (x) (simple-format #f "      - '~A'" x))
+                  (cdr x)))
+           "\n"))
+         (else (error x)))))
+     paths)
+    "\n")))
+
+(define-gexp-compiler (tailon-configuration-file-compiler
+                       (file <tailon-configuration-file>) system target)
+  (match file
+    (($ <tailon-configuration-file> paths bind relative-root-path
+                                    allow-transfers? follow-names?
+                                    tail-lines allowed-commands debug?)
+     (text-file
+      "tailon-config.yaml"
+      (string-concatenate
+       (filter-map
+        (match-lambda
+          ((key . value)
+           (if value
+               (string-append
+                key ": " value "\n")
+               #f)))
+        `(("files" . ,(tailon-configuration-files-string paths))
+          ("bind" . ,bind)
+          ("relative-root" . ,relative-root-path)
+          ("allow-transfers" . ,(if allow-transfers? "true" "false"))
+          ("follow-names" . ,(if follow-names? "true" "false"))
+          ("tail-lines" . ,(number->string tail-lines))
+          ("commands" . ,(string-append "["
+                                        (string-join allowed-commands ", ")
+                                        "]"))
+          ,@(if debug? '(("debug" . "true")) '()))))))))
+
+(define-record-type* <tailon-configuration>
+  tailon-configuration make-tailon-configuration
+  tailon-configuration?
+  (config-file tailon-configuration-config-file
+               (default (tailon-configuration-file)))
+  (package tailon-configuration-package
+           (default tailon)))
+
+(define tailon-shepherd-service
+  (match-lambda
+    (($ <tailon-configuration> file package)
+     (list (shepherd-service
+            (provision '(tailon))
+            (documentation "Run the tailon daemon.")
+            (start #~(make-forkexec-constructor
+                      `(,(string-append #$package "/bin/tailon")
+                        "-c" ,#$file
+                        #$@(if (tailon-configuration-file-debug? file)
+                               ;; It should be possible to specify this option
+                               ;; through the configuration file, but due to a
+                               ;; bug in Tailon, it only works as a command
+                               ;; line argument.
+                               '("--debug")
+                               '()))))
+            (stop #~(make-kill-destructor)))))))
+
+(define %tailon-accounts
+  (list (user-group (name "tailon") (system? #t))
+        (user-account
+         (name "tailon")
+         (group "tailon")
+         (system? #t)
+         (comment "tailon")
+         (home-directory "/var/empty")
+         (shell (file-append shadow "/sbin/nologin")))))
+
+(define tailon-service-type
+  (service-type
+   (name 'tailon)
+   (extensions
+    (list (service-extension shepherd-root-service-type
+                             tailon-shepherd-service)
+          (service-extension account-service-type
+                             (const %tailon-accounts))))
+   (compose concatenate)
+   (extend (lambda (parameter paths)
+             (tailon-configuration
+              (inherit parameter)
+              (config-file
+               (let ((old-config-file (tailon-configuration-config-file parameter)))
+                 (tailon-configuration-file
+                  (inherit old-config-file)
+                  (paths (append (tailon-configuration-paths old-config-file)
+                                 paths))))))))
+   (default-value (tailon-configuration))))
 
 ;;; admin.scm ends here
