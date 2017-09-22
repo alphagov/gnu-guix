@@ -1002,6 +1002,40 @@ Ruby Gems.")
     (home-page "https://github.com/postmodern/rubygems-tasks")
     (license license:expat)))
 
+(define-public ruby-rubyzip
+  (package
+  (name "ruby-rubyzip")
+  (version "1.2.1")
+  (source
+    (origin
+      (method url-fetch)
+      (uri (rubygems-uri "rubyzip" version))
+      (sha256
+        (base32
+          "06js4gznzgh8ac2ldvmjcmg9v1vg9llm357yckkpylaj6z456zqz"))))
+  (build-system ruby-build-system)
+  (arguments
+   '(#:tests? #f ;; TODO: 265 runs, 2636 assertions, 5 failures, 0 errors, 0
+                 ;; skips
+     #:phases
+     (modify-phases %standard-phases
+       (add-before 'check 'patch-test/gentestfiles.rb
+         (lambda* (#:key inputs #:allow-other-keys)
+           (substitute* "test/gentestfiles.rb"
+             (("/usr/bin/zip")
+              (string-append
+               (assoc-ref inputs "zip") "/bin/zip"))))))))
+  (native-inputs
+   `(("bundler" ,bundler)
+     ("ruby-simplecov" ,ruby-simplecov)
+     ("zip" ,zip)))
+  (synopsis
+    "The rubyzip module is for reading and writing zip files")
+  (description
+    "The rubyzip module provides ways to read from and create zip files.")
+  (home-page "http://github.com/rubyzip/rubyzip")
+  (license license:bsd-2)))
+
 (define-public ruby-ffi
   (package
     (name "ruby-ffi")
